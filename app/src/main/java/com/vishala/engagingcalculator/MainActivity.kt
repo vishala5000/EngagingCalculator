@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AlphaAnimation
+import android.view.animation.Animation
 import android.view.animation.ScaleAnimation
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -94,6 +95,7 @@ class MainActivity : android.app.Activity() {
         )
 
         val historyButton = makeButton("HIS", purple, 15f)
+
         historyButton.setOnClickListener {
             haptic()
             toggleHistory()
@@ -139,6 +141,7 @@ class MainActivity : android.app.Activity() {
         )
 
         val adWebView = createAdWebView()
+
         main.addView(
             adWebView,
             LinearLayout.LayoutParams(
@@ -223,10 +226,16 @@ class MainActivity : android.app.Activity() {
             "x²" to cyan,
             "1/x" to cyan,
             "COPY" to pink
-        ).forEach { (label, color) ->
+        ).forEach { item ->
+
+            val label = item.first
+            val color = item.second
+
             val button = makeButton(label, color, 14f)
+
             button.setOnClickListener {
                 haptic()
+
                 when (label) {
                     "√" -> squareRoot()
                     "x²" -> square()
@@ -237,7 +246,10 @@ class MainActivity : android.app.Activity() {
 
             scientific.addView(
                 button,
-                LinearLayout.LayoutParams(dp(88), dp(50)).apply {
+                LinearLayout.LayoutParams(
+                    dp(88),
+                    dp(50)
+                ).apply {
                     marginStart = dp(4)
                     marginEnd = dp(4)
                 }
@@ -299,7 +311,11 @@ class MainActivity : android.app.Activity() {
             )
         )
 
-        items.forEach { (label, color) ->
+        items.forEach { item ->
+
+            val label = item.first
+            val color = item.second
+
             val button = makeButton(label, color, 21f)
 
             button.setOnClickListener {
@@ -328,21 +344,22 @@ class MainActivity : android.app.Activity() {
     ): Button {
         return Button(this).apply {
             this.text = text
-            this.textSize = size
+            textSize = size
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             setAllCaps(false)
+
             background = android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = dp(18).toFloat()
                 setColor(backgroundColor)
             }
+
             stateListAnimator = null
             elevation = dp(3).toFloat()
             minHeight = 0
             minimumHeight = 0
             minWidth = 0
             minimumWidth = 0
-            includeFontPadding = true
         }
     }
 
@@ -363,10 +380,8 @@ class MainActivity : android.app.Activity() {
         if (resetInput || currentInput == "0") {
             currentInput = digit
             resetInput = false
-        } else {
-            if (currentInput.length < 30) {
-                currentInput += digit
-            }
+        } else if (currentInput.length < 30) {
+            currentInput += digit
         }
 
         updateDisplay()
@@ -422,6 +437,7 @@ class MainActivity : android.app.Activity() {
         val operator = pendingOperator ?: return
 
         val left = storedValue
+
         val result = when (operator) {
             "+" -> left + number
             "−" -> left - number
@@ -443,10 +459,7 @@ class MainActivity : android.app.Activity() {
             "${formatNumber(left)} $operator ${formatNumber(number)} = ${formatNumber(result)}"
 
         history.add(0, calculation)
-
-        while (history.size > 50) {
-            history.removeAt(history.lastIndex)
-        }
+        trimHistory()
 
         currentInput = formatNumber(result)
         storedValue = result
@@ -454,18 +467,23 @@ class MainActivity : android.app.Activity() {
         resetInput = true
 
         expression.text = calculation
+
         updateDisplay()
     }
 
     private fun percentage() {
         val number = currentInput.toDoubleOrNull() ?: return
+
         currentInput = formatNumber(number / 100.0)
+
         updateDisplay()
     }
 
     private fun toggleSign() {
         val number = currentInput.toDoubleOrNull() ?: return
+
         currentInput = formatNumber(-number)
+
         updateDisplay()
     }
 
@@ -478,13 +496,19 @@ class MainActivity : android.app.Activity() {
             resetInput = true
         } else {
             val result = sqrt(number)
-            history.add(0, "√(${formatNumber(number)}) = ${formatNumber(result)}")
+
+            history.add(
+                0,
+                "√(${formatNumber(number)}) = ${formatNumber(result)}"
+            )
+
+            trimHistory()
+
             currentInput = formatNumber(result)
             expression.text = "√(${formatNumber(number)})"
             resetInput = true
         }
 
-        trimHistory()
         updateDisplay()
     }
 
@@ -497,11 +521,12 @@ class MainActivity : android.app.Activity() {
             "${formatNumber(number)}² = ${formatNumber(result)}"
         )
 
+        trimHistory()
+
         currentInput = formatNumber(result)
         expression.text = "${formatNumber(number)}²"
         resetInput = true
 
-        trimHistory()
         updateDisplay()
     }
 
@@ -520,12 +545,13 @@ class MainActivity : android.app.Activity() {
                 "1/${formatNumber(number)} = ${formatNumber(result)}"
             )
 
+            trimHistory()
+
             currentInput = formatNumber(result)
             expression.text = "1/${formatNumber(number)}"
             resetInput = true
         }
 
-        trimHistory()
         updateDisplay()
     }
 
@@ -535,33 +561,37 @@ class MainActivity : android.app.Activity() {
         pendingOperator = null
         resetInput = false
         expression.text = ""
+
         updateDisplay()
     }
 
     private fun backspace() {
         if (resetInput) return
 
-        if (currentInput.length > 1) {
-            currentInput = currentInput.dropLast(1)
+        currentInput = if (currentInput.length > 1) {
+            currentInput.dropLast(1)
         } else {
-            currentInput = "0"
+            "0"
         }
 
         updateDisplay()
     }
 
     private fun copyResult() {
-        val clipboard =
-            getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        try {
+            val clipboard =
+                getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
-        clipboard.setPrimaryClip(
-            ClipData.newPlainText(
-                "Calculator result",
-                currentInput
+            clipboard.setPrimaryClip(
+                ClipData.newPlainText(
+                    "Calculator result",
+                    currentInput
+                )
             )
-        )
 
-        animateDisplay()
+            animateDisplay()
+        } catch (_: Exception) {
+        }
     }
 
     private fun updateDisplay() {
@@ -581,19 +611,17 @@ class MainActivity : android.app.Activity() {
             0.94f,
             1f,
             0.94f,
-            AnimationPivot.CENTER,
-            AnimationPivot.CENTER
+            Animation.RELATIVE_TO_SELF,
+            0.5f,
+            Animation.RELATIVE_TO_SELF,
+            0.5f
         )
 
         animation.duration = 70
         animation.repeatCount = 1
-        animation.repeatMode = android.view.animation.Animation.REVERSE
+        animation.repeatMode = Animation.REVERSE
 
         view.startAnimation(animation)
-    }
-
-    private object AnimationPivot {
-        const val CENTER = 1f
     }
 
     private fun haptic() {
@@ -601,6 +629,7 @@ class MainActivity : android.app.Activity() {
             if (android.os.Build.VERSION.SDK_INT >= 31) {
                 val vibratorManager =
                     getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+
                 vibratorManager.defaultVibrator.vibrate(
                     VibrationEffect.createOneShot(
                         18,
@@ -652,6 +681,7 @@ class MainActivity : android.app.Activity() {
         )
 
         val clear = makeButton("CLEAR", pink, 13f)
+
         clear.setOnClickListener {
             haptic()
             history.clear()
@@ -664,6 +694,7 @@ class MainActivity : android.app.Activity() {
         )
 
         val close = makeButton("CLOSE", purple, 13f)
+
         close.setOnClickListener {
             haptic()
             hideHistory()
@@ -739,24 +770,31 @@ class MainActivity : android.app.Activity() {
 
         history.forEach { item ->
             val card = TextView(this)
+
             card.text = item
             card.textSize = 16f
             card.setTextColor(Color.WHITE)
             card.setPadding(dp(16), dp(15), dp(16), dp(15))
             card.gravity = Gravity.CENTER_VERTICAL
 
-            card.background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dp(16).toFloat()
-                setColor(Color.rgb(25, 28, 45))
-                setStroke(dp(1), Color.rgb(57, 61, 85))
-            }
+            card.background =
+                android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(Color.rgb(25, 28, 45))
+                    setStroke(dp(1), Color.rgb(57, 61, 85))
+                }
 
             card.setOnClickListener {
                 haptic()
-                currentInput = item.substringAfter("=").trim()
-                resetInput = true
-                updateDisplay()
-                hideHistory()
+
+                val result = item.substringAfter("=", "").trim()
+
+                if (result.isNotEmpty()) {
+                    currentInput = result
+                    resetInput = true
+                    updateDisplay()
+                    hideHistory()
+                }
             }
 
             historyContainer.addView(
@@ -787,10 +825,12 @@ class MainActivity : android.app.Activity() {
 
     private fun showHistory() {
         refreshHistory()
+
         historyOverlay.visibility = View.VISIBLE
 
         val animation = AlphaAnimation(0f, 1f)
         animation.duration = 180
+
         historyOverlay.startAnimation(animation)
     }
 
@@ -799,21 +839,16 @@ class MainActivity : android.app.Activity() {
         animation.duration = 150
 
         animation.setAnimationListener(
-            object : android.view.animation.Animation.AnimationListener {
-                override fun onAnimationStart(
-                    animation: android.view.animation.Animation?
-                ) {
+            object : Animation.AnimationListener {
+
+                override fun onAnimationStart(animation: Animation?) {
                 }
 
-                override fun onAnimationEnd(
-                    animation: android.view.animation.Animation?
-                ) {
+                override fun onAnimationEnd(animation: Animation?) {
                     historyOverlay.visibility = View.GONE
                 }
 
-                override fun onAnimationRepeat(
-                    animation: android.view.animation.Animation?
-                ) {
+                override fun onAnimationRepeat(animation: Animation?) {
                 }
             }
         )
@@ -822,24 +857,35 @@ class MainActivity : android.app.Activity() {
     }
 
     private fun formatNumber(number: Double): String {
-        if (number == 0.0) return "0"
+        if (number == 0.0) {
+            return "0"
+        }
 
         val abs = kotlin.math.abs(number)
 
         if (abs >= 1e12 || abs < 1e-9) {
-            return String.format(Locale.US, "%.10g", number)
+            return String.format(
+                Locale.US,
+                "%.10g",
+                number
+            )
         }
 
         val formatter = DecimalFormat("#,##0.##########")
+
         return formatter.format(number)
     }
 
     private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).toInt()
+        return (
+            value * resources.displayMetrics.density
+        ).toInt()
     }
 
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (::historyOverlay.isInitialized &&
+        if (
+            ::historyOverlay.isInitialized &&
             historyOverlay.visibility == View.VISIBLE
         ) {
             hideHistory()
