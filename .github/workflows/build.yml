@@ -17,31 +17,32 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Check Android SDK
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Check project files
         shell: bash
         run: |
+          echo "======================================"
+          echo "PROJECT FILES"
+          echo "======================================"
+
+          pwd
+          find . -maxdepth 3 -type f | sort
+
+          echo "======================================"
+          echo "ANDROID SDK"
+          echo "======================================"
+
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
-          echo "Android SDK:"
-          ls -la "$ANDROID_HOME"
-
-          echo "Build tools:"
-          ls -la "$ANDROID_HOME/build-tools" || true
-
-          echo "Platforms:"
-          ls -la "$ANDROID_HOME/platforms" || true
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Make Gradle executable
+      - name: Check Gradle
         shell: bash
-        run: chmod +x gradlew
-
-      - name: Show Gradle version
-        shell: bash
-        run: ./gradlew --version
+        run: |
+          gradle --version
 
       - name: Create automatic release keystore
         shell: bash
@@ -59,7 +60,9 @@ jobs:
             -keypass calculator123 \
             -dname "CN=Engaging Calculator,O=Vishala,C=IN"
 
-      - name: Configure signing
+          echo "Release keystore created."
+
+      - name: Configure automatic signing
         shell: bash
         run: |
           echo "KEYSTORE_FILE=$GITHUB_WORKSPACE/signing/release.keystore" >> "$GITHUB_ENV"
@@ -70,7 +73,7 @@ jobs:
       - name: Build signed Release APK
         shell: bash
         run: |
-          ./gradlew assembleRelease \
+          gradle assembleRelease \
             --no-daemon \
             --stacktrace
 
@@ -80,11 +83,14 @@ jobs:
           APK="app/build/outputs/apk/release/app-release.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "ERROR: APK was not created."
+            echo "ERROR: Release APK was not created."
             exit 1
           fi
 
-          echo "APK successfully created:"
+          echo "======================================"
+          echo "APK CREATED SUCCESSFULLY"
+          echo "======================================"
+
           ls -lh "$APK"
 
       - name: Find apksigner
@@ -98,12 +104,16 @@ jobs:
 
           if [ -z "$APKSIGNER" ]; then
             echo "ERROR: apksigner was not found."
-            find "$ANDROID_HOME" -name apksigner -type f || true
+            find "$ANDROID_HOME" \
+              -type f \
+              -name apksigner \
+              -print
             exit 1
           fi
 
           echo "APKSIGNER=$APKSIGNER" >> "$GITHUB_ENV"
-          echo "Using apksigner:"
+
+          echo "Using:"
           echo "$APKSIGNER"
 
       - name: Verify APK signature
@@ -113,7 +123,9 @@ jobs:
             --verbose \
             app/build/outputs/apk/release/app-release.apk
 
-          echo "APK signature verification successful."
+          echo "======================================"
+          echo "SIGNATURE VERIFIED"
+          echo "======================================"
 
       - name: Rename APK
         shell: bash
@@ -122,6 +134,7 @@ jobs:
             app/build/outputs/apk/release/app-release.apk \
             EngagingCalculator-v1.0.apk
 
+          echo "Final APK:"
           ls -lh EngagingCalculator-v1.0.apk
 
       - name: Upload signed APK
