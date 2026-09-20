@@ -10,25 +10,30 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.text.TextUtils
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.HorizontalScrollView
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import kotlin.math.round
 import kotlin.math.sqrt
 
 class MainActivity : android.app.Activity() {
 
     private lateinit var expressionText: TextView
     private lateinit var resultText: TextView
+
     private lateinit var historyScroll: ScrollView
     private lateinit var historyContainer: LinearLayout
+
     private lateinit var adWebView: WebView
 
     private val history = mutableListOf<String>()
@@ -71,38 +76,37 @@ class MainActivity : android.app.Activity() {
 
     private fun buildInterface() {
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        val root = FrameLayout(this).apply {
             setBackgroundColor(backgroundColor)
             fitsSystemWindows = true
         }
 
-        val topBar = createTopBar()
-        root.addView(
-            topBar,
+        val mainLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(backgroundColor)
+        }
+
+        mainLayout.addView(
+            createTopBar(),
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(64)
             )
         )
 
-        val displayCard = createDisplayCard()
-
-        root.addView(
-            displayCard,
+        mainLayout.addView(
+            createDisplayCard(),
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
-                1.0f
+                1f
             ).apply {
                 setMargins(dp(12), dp(4), dp(12), dp(6))
             }
         )
 
-        val adCard = createAdCard()
-
-        root.addView(
-            adCard,
+        mainLayout.addView(
+            createAdCard(),
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(64)
@@ -111,10 +115,8 @@ class MainActivity : android.app.Activity() {
             }
         )
 
-        val keyboard = createKeyboard()
-
-        root.addView(
-            keyboard,
+        mainLayout.addView(
+            createKeyboard(),
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
@@ -123,6 +125,21 @@ class MainActivity : android.app.Activity() {
                 setMargins(dp(10), 0, dp(10), dp(8))
             }
         )
+
+        root.addView(
+            mainLayout,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        /*
+         * IMPORTANT:
+         * The history panel is now created and initialized BEFORE
+         * any HISTORY/HIS button can use it.
+         */
+        createHistoryPanel(root)
 
         setContentView(root)
     }
@@ -142,7 +159,10 @@ class MainActivity : android.app.Activity() {
         val title = TextView(this).apply {
             text = "ENGAGING"
             textSize = 20f
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = Typeface.create(
+                "sans-serif-black",
+                Typeface.BOLD
+            )
             setTextColor(Color.rgb(255, 112, 65))
         }
 
@@ -166,9 +186,11 @@ class MainActivity : android.app.Activity() {
             )
         )
 
-        val historyButton = createSmallButton("HISTORY", functionColor)
+        val historyButton =
+            createSmallButton("HISTORY", functionColor)
 
         historyButton.setOnClickListener {
+            vibrate()
             toggleHistory()
         }
 
@@ -182,9 +204,11 @@ class MainActivity : android.app.Activity() {
             }
         )
 
-        val copyButton = createSmallButton("COPY", operatorColor)
+        val copyButton =
+            createSmallButton("COPY", operatorColor)
 
         copyButton.setOnClickListener {
+            vibrate()
             copyResult()
         }
 
@@ -204,8 +228,18 @@ class MainActivity : android.app.Activity() {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.BOTTOM
-            setPadding(dp(18), dp(12), dp(18), dp(14))
-            background = roundedBackground(cardColor, dp(24).toFloat())
+
+            setPadding(
+                dp(18),
+                dp(12),
+                dp(18),
+                dp(14)
+            )
+
+            background = roundedBackground(
+                cardColor,
+                dp(24).toFloat()
+            )
         }
 
         val label = TextView(this).apply {
@@ -222,17 +256,23 @@ class MainActivity : android.app.Activity() {
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             setTextColor(secondaryText)
             maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.START
+            ellipsize = TextUtils.TruncateAt.START
         }
 
         resultText = TextView(this).apply {
             text = "0"
             textSize = 46f
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+
+            typeface = Typeface.create(
+                "sans-serif",
+                Typeface.BOLD
+            )
+
             setTextColor(white)
+
             maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.START
+            ellipsize = TextUtils.TruncateAt.START
         }
 
         card.addView(
@@ -267,6 +307,7 @@ class MainActivity : android.app.Activity() {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
+
             background = roundedBackground(
                 Color.rgb(13, 15, 27),
                 dp(16).toFloat()
@@ -274,13 +315,17 @@ class MainActivity : android.app.Activity() {
         }
 
         adWebView = WebView(this).apply {
+
             setBackgroundColor(Color.TRANSPARENT)
+
             webViewClient = WebViewClient()
 
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
+
                 cacheMode = WebSettings.LOAD_DEFAULT
+
                 loadWithOverviewMode = true
                 useWideViewPort = true
             }
@@ -297,6 +342,157 @@ class MainActivity : android.app.Activity() {
         )
 
         return card
+    }
+
+    /*
+     * FIX:
+     * Properly creates the history panel and initializes both
+     * historyScroll and historyContainer.
+     */
+    private fun createHistoryPanel(root: FrameLayout) {
+
+        historyScroll = ScrollView(this).apply {
+
+            visibility = View.GONE
+            alpha = 0f
+
+            setBackgroundColor(
+                Color.argb(245, 8, 9, 18)
+            )
+
+            isFillViewport = true
+
+            isVerticalScrollBarEnabled = false
+        }
+
+        val panel = LinearLayout(this).apply {
+
+            orientation = LinearLayout.VERTICAL
+
+            setPadding(
+                dp(14),
+                dp(18),
+                dp(14),
+                dp(18)
+            )
+
+            background = roundedBackground(
+                Color.rgb(15, 17, 31),
+                dp(22).toFloat()
+            )
+        }
+
+        val header = LinearLayout(this).apply {
+
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val heading = TextView(this).apply {
+
+            text = "CALCULATION HISTORY"
+            textSize = 18f
+
+            typeface = Typeface.create(
+                "sans-serif-black",
+                Typeface.BOLD
+            )
+
+            setTextColor(white)
+        }
+
+        header.addView(
+            heading,
+            LinearLayout.LayoutParams(
+                0,
+                dp(48),
+                1f
+            )
+        )
+
+        val clearButton = createSmallButton(
+            "CLEAR",
+            specialColor
+        )
+
+        clearButton.setOnClickListener {
+
+            vibrate()
+
+            history.clear()
+
+            refreshHistory()
+        }
+
+        header.addView(
+            clearButton,
+            LinearLayout.LayoutParams(
+                dp(70),
+                dp(38)
+            )
+        )
+
+        panel.addView(header)
+
+        val closeButton = createSmallButton(
+            "CLOSE",
+            functionColor
+        )
+
+        closeButton.setOnClickListener {
+
+            vibrate()
+
+            hideHistory()
+        }
+
+        panel.addView(
+            closeButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(42)
+            ).apply {
+                setMargins(0, dp(10), 0, dp(8))
+            }
+        )
+
+        historyContainer = LinearLayout(this).apply {
+
+            orientation = LinearLayout.VERTICAL
+        }
+
+        panel.addView(
+            historyContainer,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        historyScroll.addView(
+            panel,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        root.addView(
+            historyScroll,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ).apply {
+                setMargins(
+                    dp(8),
+                    dp(68),
+                    dp(8),
+                    dp(8)
+                )
+            }
+        )
+
+        refreshHistory()
     }
 
     private fun createKeyboard(): LinearLayout {
@@ -355,10 +551,15 @@ class MainActivity : android.app.Activity() {
             container,
             arrayOf("AC", "⌫", "%", "÷")
         ) { button ->
+
             when (button) {
+
                 "AC" -> clearAll()
+
                 "⌫" -> backspace()
+
                 "%" -> percentage()
+
                 "÷" -> chooseOperator("/")
             }
         }
@@ -367,6 +568,7 @@ class MainActivity : android.app.Activity() {
             container,
             arrayOf("7", "8", "9", "×")
         ) { button ->
+
             if (button == "×") {
                 chooseOperator("*")
             } else {
@@ -378,6 +580,7 @@ class MainActivity : android.app.Activity() {
             container,
             arrayOf("4", "5", "6", "−")
         ) { button ->
+
             if (button == "−") {
                 chooseOperator("-")
             } else {
@@ -389,6 +592,7 @@ class MainActivity : android.app.Activity() {
             container,
             arrayOf("1", "2", "3", "+")
         ) { button ->
+
             if (button == "+") {
                 chooseOperator("+")
             } else {
@@ -400,10 +604,15 @@ class MainActivity : android.app.Activity() {
             container,
             arrayOf("±", "0", ".", "=")
         ) { button ->
+
             when (button) {
+
                 "±" -> toggleSign()
+
                 "0" -> digit("0")
+
                 "." -> decimal()
+
                 "=" -> calculate()
             }
         }
@@ -418,20 +627,44 @@ class MainActivity : android.app.Activity() {
     ) {
 
         val row = LinearLayout(this).apply {
+
             orientation = LinearLayout.HORIZONTAL
+
             weightSum = buttons.size.toFloat()
         }
 
         for (text in buttons) {
 
             val color = when {
-                text == "=" -> equalsColor
-                text in arrayOf("+", "−", "×", "÷") -> operatorColor
-                text in arrayOf("AC", "⌫", "%", "±") -> specialColor
-                else -> numberColor
+
+                text == "=" ->
+                    equalsColor
+
+                text in arrayOf(
+                    "+",
+                    "−",
+                    "×",
+                    "÷"
+                ) ->
+                    operatorColor
+
+                text in arrayOf(
+                    "AC",
+                    "⌫",
+                    "%",
+                    "±"
+                ) ->
+                    specialColor
+
+                else ->
+                    numberColor
             }
 
-            addButton(row, text, color) {
+            addButton(
+                row,
+                text,
+                color
+            ) {
                 action(text)
             }
         }
@@ -454,14 +687,22 @@ class MainActivity : android.app.Activity() {
     ) {
 
         val button = TextView(this).apply {
+
             this.text = text
-            textSize = if (text.length > 2) 14f else 22f
+
+            textSize =
+                if (text.length > 2) 14f
+                else 22f
+
             gravity = Gravity.CENTER
+
             typeface = Typeface.create(
                 "sans-serif",
                 Typeface.BOLD
             )
+
             setTextColor(white)
+
             background = roundedBackground(
                 color,
                 dp(18).toFloat()
@@ -471,8 +712,11 @@ class MainActivity : android.app.Activity() {
             isFocusable = true
 
             setOnClickListener {
+
                 animateButton(this)
+
                 vibrate()
+
                 action()
             }
 
@@ -480,19 +724,23 @@ class MainActivity : android.app.Activity() {
 
                 when (event.action) {
 
-                    android.view.MotionEvent.ACTION_DOWN -> {
-                        view.background = roundedBackground(
-                            pressedColor(color),
-                            dp(18).toFloat()
-                        )
+                    MotionEvent.ACTION_DOWN -> {
+
+                        view.background =
+                            roundedBackground(
+                                pressedColor(color),
+                                dp(18).toFloat()
+                            )
                     }
 
-                    android.view.MotionEvent.ACTION_UP,
-                    android.view.MotionEvent.ACTION_CANCEL -> {
-                        view.background = roundedBackground(
-                            color,
-                            dp(18).toFloat()
-                        )
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_CANCEL -> {
+
+                        view.background =
+                            roundedBackground(
+                                color,
+                                dp(18).toFloat()
+                            )
                     }
                 }
 
@@ -523,11 +771,17 @@ class MainActivity : android.app.Activity() {
     ): TextView {
 
         return TextView(this).apply {
+
             this.text = text
+
             textSize = 9f
+
             gravity = Gravity.CENTER
+
             typeface = Typeface.DEFAULT_BOLD
+
             letterSpacing = 0.08f
+
             setTextColor(white)
 
             background = roundedBackground(
@@ -535,18 +789,23 @@ class MainActivity : android.app.Activity() {
                 dp(12).toFloat()
             )
 
+            isClickable = true
+            isFocusable = true
+
             setOnTouchListener { view, event ->
 
                 when (event.action) {
 
-                    android.view.MotionEvent.ACTION_DOWN -> {
+                    MotionEvent.ACTION_DOWN -> {
+
                         view.alpha = 0.65f
                         view.scaleX = 0.95f
                         view.scaleY = 0.95f
                     }
 
-                    android.view.MotionEvent.ACTION_UP,
-                    android.view.MotionEvent.ACTION_CANCEL -> {
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_CANCEL -> {
+
                         view.alpha = 1f
                         view.scaleX = 1f
                         view.scaleY = 1f
@@ -561,14 +820,20 @@ class MainActivity : android.app.Activity() {
     private fun digit(value: String) {
 
         if (waitingForOperand || justCalculated) {
+
             currentInput = value
+
             waitingForOperand = false
             justCalculated = false
+
         } else {
 
             if (currentInput == "0") {
+
                 currentInput = value
+
             } else if (currentInput.length < 30) {
+
                 currentInput += value
             }
         }
@@ -579,10 +844,14 @@ class MainActivity : android.app.Activity() {
     private fun decimal() {
 
         if (waitingForOperand || justCalculated) {
+
             currentInput = "0."
+
             waitingForOperand = false
             justCalculated = false
+
         } else if (!currentInput.contains(".")) {
+
             currentInput += "."
         }
 
@@ -591,9 +860,13 @@ class MainActivity : android.app.Activity() {
 
     private fun percentage() {
 
-        val value = currentInput.toDoubleOrNull() ?: return
+        val value =
+            currentInput.toDoubleOrNull()
+                ?: return
 
-        currentInput = formatNumber(value / 100.0)
+        currentInput =
+            formatNumber(value / 100.0)
+
         updateDisplay()
     }
 
@@ -603,43 +876,60 @@ class MainActivity : android.app.Activity() {
 
         currentInput =
             if (currentInput.startsWith("-")) {
+
                 currentInput.substring(1)
+
             } else {
+
                 "-$currentInput"
             }
 
         updateDisplay()
     }
 
-    private fun chooseOperator(operator: String) {
+    private fun chooseOperator(
+        operator: String
+    ) {
 
-        val input = currentInput.toDoubleOrNull() ?: return
+        val input =
+            currentInput.toDoubleOrNull()
+                ?: return
 
-        if (pendingOperator != null && !waitingForOperand) {
+        if (
+            pendingOperator != null &&
+            !waitingForOperand
+        ) {
 
-            val result = performOperation(
-                storedValue,
-                input,
-                pendingOperator!!
-            )
+            val result =
+                performOperation(
+                    storedValue,
+                    input,
+                    pendingOperator!!
+                )
 
             if (result == null) {
+
                 Toast.makeText(
                     this,
                     "Cannot divide by zero",
                     Toast.LENGTH_SHORT
                 ).show()
+
                 return
             }
 
             storedValue = result
-            currentInput = formatNumber(result)
+
+            currentInput =
+                formatNumber(result)
 
         } else {
+
             storedValue = input
         }
 
         pendingOperator = operator
+
         waitingForOperand = true
         justCalculated = false
 
@@ -651,14 +941,20 @@ class MainActivity : android.app.Activity() {
 
     private fun calculate() {
 
-        val operator = pendingOperator ?: return
-        val input = currentInput.toDoubleOrNull() ?: return
+        val operator =
+            pendingOperator
+                ?: return
 
-        val result = performOperation(
-            storedValue,
-            input,
-            operator
-        )
+        val input =
+            currentInput.toDoubleOrNull()
+                ?: return
+
+        val result =
+            performOperation(
+                storedValue,
+                input,
+                operator
+            )
 
         if (result == null) {
 
@@ -672,24 +968,31 @@ class MainActivity : android.app.Activity() {
         }
 
         val expression =
-            "${formatNumber(storedValue)} ${displayOperator(operator)} ${formatNumber(input)}"
+            "${formatNumber(storedValue)} " +
+                    "${displayOperator(operator)} " +
+                    formatNumber(input)
 
-        val resultString = formatNumber(result)
+        val resultString =
+            formatNumber(result)
 
         addHistory(
             "$expression = $resultString"
         )
 
         currentInput = resultString
+
         storedValue = result
 
         pendingOperator = null
+
         waitingForOperand = false
+
         justCalculated = true
 
         expressionText.text = expression
 
         updateDisplay()
+
         animateResult()
     }
 
@@ -707,10 +1010,12 @@ class MainActivity : android.app.Activity() {
 
             "*" -> first * second
 
-            "/" -> {
-                if (second == 0.0) null
-                else first / second
-            }
+            "/" ->
+                if (second == 0.0) {
+                    null
+                } else {
+                    first / second
+                }
 
             else -> second
         }
@@ -718,14 +1023,18 @@ class MainActivity : android.app.Activity() {
 
     private fun squareRoot() {
 
-        val value = currentInput.toDoubleOrNull() ?: return
+        val value =
+            currentInput.toDoubleOrNull()
+                ?: return
 
         if (value < 0) {
+
             Toast.makeText(
                 this,
                 "Invalid number",
                 Toast.LENGTH_SHORT
             ).show()
+
             return
         }
 
@@ -735,39 +1044,54 @@ class MainActivity : android.app.Activity() {
             "√${formatNumber(value)} = ${formatNumber(result)}"
         )
 
-        currentInput = formatNumber(result)
-        expressionText.text = "√${formatNumber(value)}"
+        currentInput =
+            formatNumber(result)
+
+        expressionText.text =
+            "√${formatNumber(value)}"
 
         updateDisplay()
+
         animateResult()
     }
 
     private fun square() {
 
-        val value = currentInput.toDoubleOrNull() ?: return
+        val value =
+            currentInput.toDoubleOrNull()
+                ?: return
+
         val result = value * value
 
         addHistory(
             "${formatNumber(value)}² = ${formatNumber(result)}"
         )
 
-        currentInput = formatNumber(result)
-        expressionText.text = "${formatNumber(value)}²"
+        currentInput =
+            formatNumber(result)
+
+        expressionText.text =
+            "${formatNumber(value)}²"
 
         updateDisplay()
+
         animateResult()
     }
 
     private fun reciprocal() {
 
-        val value = currentInput.toDoubleOrNull() ?: return
+        val value =
+            currentInput.toDoubleOrNull()
+                ?: return
 
         if (value == 0.0) {
+
             Toast.makeText(
                 this,
                 "Cannot divide by zero",
                 Toast.LENGTH_SHORT
             ).show()
+
             return
         }
 
@@ -777,19 +1101,27 @@ class MainActivity : android.app.Activity() {
             "1/${formatNumber(value)} = ${formatNumber(result)}"
         )
 
-        currentInput = formatNumber(result)
-        expressionText.text = "1/${formatNumber(value)}"
+        currentInput =
+            formatNumber(result)
+
+        expressionText.text =
+            "1/${formatNumber(value)}"
 
         updateDisplay()
+
         animateResult()
     }
 
     private fun clearAll() {
 
         currentInput = "0"
+
         storedValue = 0.0
+
         pendingOperator = null
+
         waitingForOperand = false
+
         justCalculated = false
 
         expressionText.text = ""
@@ -799,11 +1131,16 @@ class MainActivity : android.app.Activity() {
 
     private fun backspace() {
 
-        if (waitingForOperand || justCalculated) return
+        if (waitingForOperand || justCalculated) {
+            return
+        }
 
-        if (currentInput.length <= 1 ||
-            (currentInput.length == 2 &&
-                    currentInput.startsWith("-"))
+        if (
+            currentInput.length <= 1 ||
+            (
+                currentInput.length == 2 &&
+                        currentInput.startsWith("-")
+                )
         ) {
 
             currentInput = "0"
@@ -826,6 +1163,7 @@ class MainActivity : android.app.Activity() {
             .scaleY(1.02f)
             .setDuration(70)
             .withEndAction {
+
                 resultText.animate()
                     .scaleX(1f)
                     .scaleY(1f)
@@ -848,15 +1186,29 @@ class MainActivity : android.app.Activity() {
 
     private fun refreshHistory() {
 
+        /*
+         * Safety check.
+         * Prevents accidental crashes if this method is ever called
+         * before the history panel is created.
+         */
+        if (!::historyContainer.isInitialized) {
+            return
+        }
+
         historyContainer.removeAllViews()
 
         if (history.isEmpty()) {
 
             val empty = TextView(this).apply {
+
                 text = "No calculations yet"
+
                 textSize = 15f
+
                 setTextColor(secondaryText)
+
                 gravity = Gravity.CENTER
+
                 setPadding(
                     dp(20),
                     dp(30),
@@ -873,10 +1225,15 @@ class MainActivity : android.app.Activity() {
         for (item in history) {
 
             val row = TextView(this).apply {
+
                 text = item
+
                 textSize = 15f
+
                 setTextColor(white)
+
                 gravity = Gravity.CENTER_VERTICAL
+
                 setPadding(
                     dp(15),
                     dp(12),
@@ -889,15 +1246,28 @@ class MainActivity : android.app.Activity() {
                     dp(14).toFloat()
                 )
 
+                isClickable = true
+
                 setOnClickListener {
 
-                    val result = item.substringAfterLast("=")
-                        .trim()
+                    val result =
+                        item.substringAfterLast("=")
+                            .trim()
 
-                    currentInput = result
-                    updateDisplay()
+                    if (result.isNotEmpty()) {
 
-                    toggleHistory()
+                        currentInput = result
+
+                        pendingOperator = null
+
+                        waitingForOperand = false
+
+                        justCalculated = true
+
+                        updateDisplay()
+                    }
+
+                    hideHistory()
                 }
             }
 
@@ -920,35 +1290,63 @@ class MainActivity : android.app.Activity() {
 
     private fun toggleHistory() {
 
+        if (!::historyScroll.isInitialized) {
+            return
+        }
+
         if (historyScroll.visibility == View.VISIBLE) {
 
-            historyScroll.animate()
-                .alpha(0f)
-                .setDuration(180)
-                .withEndAction {
-                    historyScroll.visibility = View.GONE
-                }
-                .start()
+            hideHistory()
 
         } else {
 
-            refreshHistory()
-
-            historyScroll.visibility = View.VISIBLE
-            historyScroll.alpha = 0f
-
-            historyScroll.animate()
-                .alpha(1f)
-                .setDuration(220)
-                .start()
+            showHistory()
         }
+    }
+
+    private fun showHistory() {
+
+        if (!::historyScroll.isInitialized) {
+            return
+        }
+
+        refreshHistory()
+
+        historyScroll.visibility = View.VISIBLE
+
+        historyScroll.alpha = 0f
+
+        historyScroll.animate()
+            .alpha(1f)
+            .setDuration(220)
+            .start()
+    }
+
+    private fun hideHistory() {
+
+        if (!::historyScroll.isInitialized) {
+            return
+        }
+
+        historyScroll.animate()
+            .alpha(0f)
+            .setDuration(160)
+            .withEndAction {
+
+                historyScroll.visibility =
+                    View.GONE
+
+                historyScroll.alpha = 0f
+            }
+            .start()
     }
 
     private fun copyResult() {
 
         val clipboard =
-            getSystemService(Context.CLIPBOARD_SERVICE)
-                    as ClipboardManager
+            getSystemService(
+                Context.CLIPBOARD_SERVICE
+            ) as ClipboardManager
 
         clipboard.setPrimaryClip(
             ClipData.newPlainText(
@@ -962,21 +1360,37 @@ class MainActivity : android.app.Activity() {
             "Result copied: $currentInput",
             Toast.LENGTH_SHORT
         ).show()
-
-        vibrate()
     }
 
     private fun animateButton(view: View) {
 
         val scaleDownX =
-            ObjectAnimator.ofFloat(view, "scaleX", 1f, 0.92f, 1f)
+            ObjectAnimator.ofFloat(
+                view,
+                "scaleX",
+                1f,
+                0.92f,
+                1f
+            )
 
         val scaleDownY =
-            ObjectAnimator.ofFloat(view, "scaleY", 1f, 0.92f, 1f)
+            ObjectAnimator.ofFloat(
+                view,
+                "scaleY",
+                1f,
+                0.92f,
+                1f
+            )
 
         AnimatorSet().apply {
-            playTogether(scaleDownX, scaleDownY)
+
+            playTogether(
+                scaleDownX,
+                scaleDownY
+            )
+
             duration = 130
+
             start()
         }
     }
@@ -988,6 +1402,7 @@ class MainActivity : android.app.Activity() {
             .scaleY(1.08f)
             .setDuration(120)
             .withEndAction {
+
                 resultText.animate()
                     .scaleX(1f)
                     .scaleY(1f)
@@ -999,34 +1414,52 @@ class MainActivity : android.app.Activity() {
 
     private fun vibrate() {
 
-        val vibrator =
-            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        try {
 
-        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            val vibrator =
+                getSystemService(
+                    Context.VIBRATOR_SERVICE
+                ) as Vibrator
 
-            vibrator.vibrate(
-                VibrationEffect.createOneShot(
-                    18,
-                    VibrationEffect.DEFAULT_AMPLITUDE
+            if (
+                android.os.Build.VERSION.SDK_INT >= 26
+            ) {
+
+                vibrator.vibrate(
+                    VibrationEffect.createOneShot(
+                        18,
+                        VibrationEffect.DEFAULT_AMPLITUDE
+                    )
                 )
-            )
 
-        } else {
-            @Suppress("DEPRECATION")
-            vibrator.vibrate(18)
+            } else {
+
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(18)
+            }
+
+        } catch (_: Exception) {
+            // Haptic feedback must never crash the calculator.
         }
     }
 
-    private fun displayOperator(operator: String): String {
+    private fun displayOperator(
+        operator: String
+    ): String {
 
         return when (operator) {
+
             "*" -> "×"
+
             "/" -> "÷"
+
             else -> operator
         }
     }
 
-    private fun formatNumber(value: Double): String {
+    private fun formatNumber(
+        value: Double
+    ): String {
 
         if (!value.isFinite()) {
             return "Error"
@@ -1036,35 +1469,59 @@ class MainActivity : android.app.Activity() {
             return "0"
         }
 
-        val rounded = kotlin.math.round(value * 1_000_000_000.0) /
-                1_000_000_000.0
+        val rounded =
+            round(
+                value * 1_000_000_000.0
+            ) / 1_000_000_000.0
 
-        return if (rounded % 1.0 == 0.0) {
+        return if (
+            rounded % 1.0 == 0.0
+        ) {
+
             rounded.toLong().toString()
+
         } else {
+
             rounded.toString()
         }
     }
 
-    private fun pressedColor(color: Int): Int {
+    private fun pressedColor(
+        color: Int
+    ): Int {
 
         return when (color) {
 
-            operatorColor -> operatorPressed
+            operatorColor ->
+                operatorPressed
 
-            functionColor -> functionPressed
+            functionColor ->
+                functionPressed
 
-            specialColor -> specialPressed
+            specialColor ->
+                specialPressed
 
-            equalsColor -> equalsPressed
+            equalsColor ->
+                equalsPressed
 
-            numberColor -> numberPressed
+            numberColor ->
+                numberPressed
 
-            else -> Color.rgb(
-                minOf(Color.red(color) + 25, 255),
-                minOf(Color.green(color) + 25, 255),
-                minOf(Color.blue(color) + 25, 255)
-            )
+            else ->
+                Color.rgb(
+                    minOf(
+                        Color.red(color) + 25,
+                        255
+                    ),
+                    minOf(
+                        Color.green(color) + 25,
+                        255
+                    ),
+                    minOf(
+                        Color.blue(color) + 25,
+                        255
+                    )
+                )
         }
     }
 
@@ -1074,7 +1531,9 @@ class MainActivity : android.app.Activity() {
     ): android.graphics.drawable.GradientDrawable {
 
         return android.graphics.drawable.GradientDrawable().apply {
+
             setColor(color)
+
             cornerRadius = radius
         }
     }
@@ -1082,16 +1541,35 @@ class MainActivity : android.app.Activity() {
     private fun dp(value: Int): Int {
 
         return (
-            value * resources.displayMetrics.density
+            value *
+                    resources.displayMetrics.density
             ).toInt()
     }
 
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
 
-        if (historyScroll.visibility == View.VISIBLE) {
-            toggleHistory()
+        if (
+            ::historyScroll.isInitialized &&
+            historyScroll.visibility == View.VISIBLE
+        ) {
+
+            hideHistory()
+
         } else {
+
             super.onBackPressed()
         }
+    }
+
+    override fun onDestroy() {
+
+        if (::adWebView.isInitialized) {
+
+            adWebView.stopLoading()
+            adWebView.destroy()
+        }
+
+        super.onDestroy()
     }
 }
