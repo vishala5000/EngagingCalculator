@@ -3,41 +3,60 @@ name: Build Android APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
 
-      - name: Check project files
+      - name: Check project
         shell: bash
         run: |
           echo "======================================"
-          echo "PROJECT FILES"
+          echo "PROJECT"
           echo "======================================"
 
+          echo "Working directory:"
           pwd
+
+          echo
+          echo "Project files:"
           find . -maxdepth 3 -type f | sort
 
+      - name: Check Android SDK
+        shell: bash
+        run: |
           echo "======================================"
           echo "ANDROID SDK"
           echo "======================================"
 
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          echo
+          echo "Installed Android platforms:"
+          ls -la "$ANDROID_HOME/platforms" || true
+
+          echo
+          echo "Installed build tools:"
+          ls -la "$ANDROID_HOME/build-tools" || true
 
       - name: Check Gradle
         shell: bash
@@ -60,7 +79,8 @@ jobs:
             -keypass calculator123 \
             -dname "CN=Engaging Calculator,O=Vishala,C=IN"
 
-          echo "Release keystore created."
+          echo
+          echo "Release keystore created successfully."
 
       - name: Configure automatic signing
         shell: bash
@@ -83,10 +103,11 @@ jobs:
           APK="app/build/outputs/apk/release/app-release.apk"
 
           if [ ! -f "$APK" ]; then
-            echo "ERROR: Release APK was not created."
+            echo "ERROR: APK was not created."
             exit 1
           fi
 
+          echo
           echo "======================================"
           echo "APK CREATED SUCCESSFULLY"
           echo "======================================"
@@ -104,16 +125,21 @@ jobs:
 
           if [ -z "$APKSIGNER" ]; then
             echo "ERROR: apksigner was not found."
+
+            echo
+            echo "Searching Android SDK:"
             find "$ANDROID_HOME" \
               -type f \
               -name apksigner \
               -print
+
             exit 1
           fi
 
           echo "APKSIGNER=$APKSIGNER" >> "$GITHUB_ENV"
 
-          echo "Using:"
+          echo
+          echo "Using apksigner:"
           echo "$APKSIGNER"
 
       - name: Verify APK signature
@@ -123,8 +149,9 @@ jobs:
             --verbose \
             app/build/outputs/apk/release/app-release.apk
 
+          echo
           echo "======================================"
-          echo "SIGNATURE VERIFIED"
+          echo "APK SIGNATURE VERIFIED"
           echo "======================================"
 
       - name: Rename APK
@@ -134,6 +161,7 @@ jobs:
             app/build/outputs/apk/release/app-release.apk \
             EngagingCalculator-v1.0.apk
 
+          echo
           echo "Final APK:"
           ls -lh EngagingCalculator-v1.0.apk
 
