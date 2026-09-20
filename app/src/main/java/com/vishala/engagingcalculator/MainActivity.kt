@@ -1,6 +1,7 @@
 package com.vishala.engagingcalculator
 
-import android.app.Activity
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -9,7 +10,6 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -20,29 +20,51 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import java.util.Locale
-import kotlin.math.pow
+import android.widget.Toast
 import kotlin.math.sqrt
 
-class MainActivity : Activity() {
+class MainActivity : android.app.Activity() {
 
-    private lateinit var display: TextView
-    private lateinit var expression: TextView
+    private lateinit var expressionText: TextView
+    private lateinit var resultText: TextView
+    private lateinit var historyScroll: ScrollView
     private lateinit var historyContainer: LinearLayout
+    private lateinit var adWebView: WebView
 
-    private var current = "0"
-    private var stored = 0.0
-    private var operator: String? = null
+    private val history = mutableListOf<String>()
+
+    private var currentInput = "0"
+    private var storedValue = 0.0
+    private var pendingOperator: String? = null
     private var waitingForOperand = false
-    private var expressionText = ""
+    private var justCalculated = false
 
-    private val history = ArrayDeque<String>()
+    private val backgroundColor = Color.rgb(8, 9, 18)
+    private val cardColor = Color.rgb(17, 19, 34)
+
+    private val numberColor = Color.rgb(30, 34, 54)
+    private val numberPressed = Color.rgb(47, 51, 78)
+
+    private val operatorColor = Color.rgb(116, 72, 255)
+    private val operatorPressed = Color.rgb(145, 102, 255)
+
+    private val functionColor = Color.rgb(22, 112, 120)
+    private val functionPressed = Color.rgb(31, 146, 154)
+
+    private val specialColor = Color.rgb(190, 56, 110)
+    private val specialPressed = Color.rgb(220, 77, 135)
+
+    private val equalsColor = Color.rgb(255, 105, 45)
+    private val equalsPressed = Color.rgb(255, 137, 67)
+
+    private val white = Color.rgb(245, 247, 255)
+    private val secondaryText = Color.rgb(160, 166, 190)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        window.statusBarColor = Color.rgb(9, 10, 15)
-        window.navigationBarColor = Color.rgb(9, 10, 15)
+        window.statusBarColor = backgroundColor
+        window.navigationBarColor = backgroundColor
 
         buildInterface()
     }
@@ -51,264 +73,476 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(9, 10, 15))
-            setPadding(dp(14), dp(10), dp(14), dp(8))
+            setBackgroundColor(backgroundColor)
+            fitsSystemWindows = true
         }
 
-        val title = TextView(this).apply {
-            text = "CALCULATOR"
-            textSize = 14f
-            setTextColor(Color.rgb(180, 170, 255))
-            typeface = Typeface.DEFAULT_BOLD
-            letterSpacing = 0.15f
-            gravity = Gravity.CENTER
-        }
-
+        val topBar = createTopBar()
         root.addView(
-            title,
+            topBar,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(34)
+                dp(64)
             )
         )
 
-        expression = TextView(this).apply {
-            text = ""
-            textSize = 16f
-            setTextColor(Color.rgb(130, 135, 155))
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            setPadding(dp(12), 0, dp(12), 0)
-            maxLines = 1
-        }
+        val displayCard = createDisplayCard()
 
         root.addView(
-            expression,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(34)
-            )
-        )
-
-        display = TextView(this).apply {
-            text = "0"
-            textSize = 46f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            setPadding(dp(12), 0, dp(12), 0)
-            maxLines = 1
-        }
-
-        root.addView(
-            display,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(76)
-            )
-        )
-
-        val copyButton = makeButton("COPY", 0xFF20222C.toInt())
-
-        copyButton.setOnClickListener {
-            copyResult()
-            vibrate()
-        }
-
-        root.addView(
-            copyButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(44)
-            ).apply {
-                topMargin = dp(4)
-                bottomMargin = dp(8)
-            }
-        )
-
-        val calculator = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        val rows = listOf(
-            listOf("AC", "⌫", "%", "÷"),
-            listOf("7", "8", "9", "×"),
-            listOf("4", "5", "6", "−"),
-            listOf("1", "2", "3", "+"),
-            listOf("±", "0", ".", "=")
-        )
-
-        rows.forEach { rowItems ->
-
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-            }
-
-            rowItems.forEach { item ->
-
-                val color = when {
-                    item == "=" -> 0xFF7C4DFF.toInt()
-                    item in listOf("÷", "×", "−", "+") -> 0xFF29213D.toInt()
-                    item in listOf("AC", "⌫", "%", "±") -> 0xFF20222C.toInt()
-                    else -> 0xFF15171E.toInt()
-                }
-
-                val button = makeButton(item, color)
-
-                button.setOnClickListener {
-                    vibrate()
-                    handleInput(item)
-                }
-
-                row.addView(
-                    button,
-                    LinearLayout.LayoutParams(
-                        0,
-                        dp(62),
-                        1f
-                    ).apply {
-                        setMargins(dp(4), dp(4), dp(4), dp(4))
-                    }
-                )
-            }
-
-            calculator.addView(
-                row,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(70)
-                )
-            )
-        }
-
-        val advancedRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-
-        listOf("√", "x²", "1/x", "HISTORY").forEach { item ->
-
-            val button = makeButton(
-                item,
-                0xFF20222C.toInt()
-            )
-
-            button.setOnClickListener {
-                vibrate()
-
-                when (item) {
-                    "√" -> squareRoot()
-                    "x²" -> square()
-                    "1/x" -> reciprocal()
-                    "HISTORY" -> toggleHistory()
-                }
-            }
-
-            advancedRow.addView(
-                button,
-                LinearLayout.LayoutParams(
-                    0,
-                    dp(52),
-                    1f
-                ).apply {
-                    setMargins(dp(4), dp(3), dp(4), dp(3))
-                }
-            )
-        }
-
-        calculator.addView(advancedRow)
-
-        root.addView(
-            calculator,
+            displayCard,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
-                1f
-            )
-        )
-
-        historyContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-            visibility = View.GONE
-        }
-
-        val historyScroll = ScrollView(this)
-
-        historyScroll.addView(
-            historyContainer,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
-        root.addView(
-            historyScroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(130)
-            )
-        )
-
-        val ad = createAdWebView()
-
-        root.addView(
-            ad,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(72)
+                1.0f
             ).apply {
-                topMargin = dp(4)
+                setMargins(dp(12), dp(4), dp(12), dp(6))
+            }
+        )
+
+        val adCard = createAdCard()
+
+        root.addView(
+            adCard,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(64)
+            ).apply {
+                setMargins(dp(12), 0, dp(12), dp(5))
+            }
+        )
+
+        val keyboard = createKeyboard()
+
+        root.addView(
+            keyboard,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                2.7f
+            ).apply {
+                setMargins(dp(10), 0, dp(10), dp(8))
             }
         )
 
         setContentView(root)
     }
 
-    private fun createAdWebView(): WebView {
+    private fun createTopBar(): LinearLayout {
 
-        return WebView(this).apply {
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(5), dp(16), dp(2))
+        }
 
-            setBackgroundColor(Color.rgb(9, 10, 15))
+        val titleContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val title = TextView(this).apply {
+            text = "ENGAGING"
+            textSize = 20f
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            setTextColor(Color.rgb(255, 112, 65))
+        }
+
+        val subtitle = TextView(this).apply {
+            text = "CALCULATOR"
+            textSize = 10f
+            letterSpacing = 0.18f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(174, 128, 255))
+        }
+
+        titleContainer.addView(title)
+        titleContainer.addView(subtitle)
+
+        bar.addView(
+            titleContainer,
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        )
+
+        val historyButton = createSmallButton("HISTORY", functionColor)
+
+        historyButton.setOnClickListener {
+            toggleHistory()
+        }
+
+        bar.addView(
+            historyButton,
+            LinearLayout.LayoutParams(
+                dp(82),
+                dp(38)
+            ).apply {
+                setMargins(0, 0, dp(7), 0)
+            }
+        )
+
+        val copyButton = createSmallButton("COPY", operatorColor)
+
+        copyButton.setOnClickListener {
+            copyResult()
+        }
+
+        bar.addView(
+            copyButton,
+            LinearLayout.LayoutParams(
+                dp(68),
+                dp(38)
+            )
+        )
+
+        return bar
+    }
+
+    private fun createDisplayCard(): LinearLayout {
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.BOTTOM
+            setPadding(dp(18), dp(12), dp(18), dp(14))
+            background = roundedBackground(cardColor, dp(24).toFloat())
+        }
+
+        val label = TextView(this).apply {
+            text = "READY"
+            textSize = 9f
+            letterSpacing = 0.25f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(123, 210, 255))
+        }
+
+        expressionText = TextView(this).apply {
+            text = ""
+            textSize = 18f
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            setTextColor(secondaryText)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.START
+        }
+
+        resultText = TextView(this).apply {
+            text = "0"
+            textSize = 46f
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            setTextColor(white)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.START
+        }
+
+        card.addView(
+            label,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(24)
+            )
+        )
+
+        card.addView(
+            expressionText,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(42)
+            )
+        )
+
+        card.addView(
+            resultText,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(70)
+            )
+        )
+
+        return card
+    }
+
+    private fun createAdCard(): LinearLayout {
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = roundedBackground(
+                Color.rgb(13, 15, 27),
+                dp(16).toFloat()
+            )
+        }
+
+        adWebView = WebView(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            webViewClient = WebViewClient()
 
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
-                databaseEnabled = true
                 cacheMode = WebSettings.LOAD_DEFAULT
-                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                loadWithOverviewMode = true
+                useWideViewPort = true
             }
-
-            webViewClient = WebViewClient()
 
             loadUrl("file:///android_asset/ads.html")
         }
+
+        card.addView(
+            adWebView,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        return card
     }
 
-    private fun makeButton(
-        text: String,
-        background: Int
-    ): TextView {
+    private fun createKeyboard(): LinearLayout {
 
-        return TextView(this).apply {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        val scientific = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            weightSum = 4f
+        }
+
+        addButton(
+            scientific,
+            "√",
+            functionColor
+        ) {
+            squareRoot()
+        }
+
+        addButton(
+            scientific,
+            "x²",
+            functionColor
+        ) {
+            square()
+        }
+
+        addButton(
+            scientific,
+            "1/x",
+            functionColor
+        ) {
+            reciprocal()
+        }
+
+        addButton(
+            scientific,
+            "HIS",
+            functionColor
+        ) {
+            toggleHistory()
+        }
+
+        container.addView(
+            scientific,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                0.75f
+            )
+        )
+
+        addKeyboardRow(
+            container,
+            arrayOf("AC", "⌫", "%", "÷")
+        ) { button ->
+            when (button) {
+                "AC" -> clearAll()
+                "⌫" -> backspace()
+                "%" -> percentage()
+                "÷" -> chooseOperator("/")
+            }
+        }
+
+        addKeyboardRow(
+            container,
+            arrayOf("7", "8", "9", "×")
+        ) { button ->
+            if (button == "×") {
+                chooseOperator("*")
+            } else {
+                digit(button)
+            }
+        }
+
+        addKeyboardRow(
+            container,
+            arrayOf("4", "5", "6", "−")
+        ) { button ->
+            if (button == "−") {
+                chooseOperator("-")
+            } else {
+                digit(button)
+            }
+        }
+
+        addKeyboardRow(
+            container,
+            arrayOf("1", "2", "3", "+")
+        ) { button ->
+            if (button == "+") {
+                chooseOperator("+")
+            } else {
+                digit(button)
+            }
+        }
+
+        addKeyboardRow(
+            container,
+            arrayOf("±", "0", ".", "=")
+        ) { button ->
+            when (button) {
+                "±" -> toggleSign()
+                "0" -> digit("0")
+                "." -> decimal()
+                "=" -> calculate()
+            }
+        }
+
+        return container
+    }
+
+    private fun addKeyboardRow(
+        parent: LinearLayout,
+        buttons: Array<String>,
+        action: (String) -> Unit
+    ) {
+
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            weightSum = buttons.size.toFloat()
+        }
+
+        for (text in buttons) {
+
+            val color = when {
+                text == "=" -> equalsColor
+                text in arrayOf("+", "−", "×", "÷") -> operatorColor
+                text in arrayOf("AC", "⌫", "%", "±") -> specialColor
+                else -> numberColor
+            }
+
+            addButton(row, text, color) {
+                action(text)
+            }
+        }
+
+        parent.addView(
+            row,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        )
+    }
+
+    private fun addButton(
+        row: LinearLayout,
+        text: String,
+        color: Int,
+        action: () -> Unit
+    ) {
+
+        val button = TextView(this).apply {
             this.text = text
-            textSize = if (text == "HISTORY") 12f else 21f
-            setTextColor(Color.WHITE)
+            textSize = if (text.length > 2) 14f else 22f
             gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            setBackgroundColor(background)
+            typeface = Typeface.create(
+                "sans-serif",
+                Typeface.BOLD
+            )
+            setTextColor(white)
+            background = roundedBackground(
+                color,
+                dp(18).toFloat()
+            )
 
             isClickable = true
             isFocusable = true
 
+            setOnClickListener {
+                animateButton(this)
+                vibrate()
+                action()
+            }
+
             setOnTouchListener { view, event ->
 
                 when (event.action) {
+
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        view.background = roundedBackground(
+                            pressedColor(color),
+                            dp(18).toFloat()
+                        )
+                    }
+
+                    android.view.MotionEvent.ACTION_UP,
+                    android.view.MotionEvent.ACTION_CANCEL -> {
+                        view.background = roundedBackground(
+                            color,
+                            dp(18).toFloat()
+                        )
+                    }
+                }
+
+                false
+            }
+        }
+
+        row.addView(
+            button,
+            LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                1f
+            ).apply {
+                setMargins(
+                    dp(4),
+                    dp(4),
+                    dp(4),
+                    dp(4)
+                )
+            }
+        )
+    }
+
+    private fun createSmallButton(
+        text: String,
+        color: Int
+    ): TextView {
+
+        return TextView(this).apply {
+            this.text = text
+            textSize = 9f
+            gravity = Gravity.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+            letterSpacing = 0.08f
+            setTextColor(white)
+
+            background = roundedBackground(
+                color,
+                dp(12).toFloat()
+            )
+
+            setOnTouchListener { view, event ->
+
+                when (event.action) {
+
                     android.view.MotionEvent.ACTION_DOWN -> {
                         view.alpha = 0.65f
-                        view.scaleX = 0.96f
-                        view.scaleY = 0.96f
+                        view.scaleX = 0.95f
+                        view.scaleY = 0.95f
                     }
 
                     android.view.MotionEvent.ACTION_UP,
@@ -324,35 +558,18 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun handleInput(input: String) {
+    private fun digit(value: String) {
 
-        when {
-            input == "AC" -> clearAll()
-
-            input == "⌫" -> backspace()
-
-            input == "." -> decimal()
-
-            input == "%" -> percentage()
-
-            input == "±" -> toggleSign()
-
-            input in listOf("+", "−", "×", "÷") -> chooseOperator(input)
-
-            input == "=" -> calculate()
-
-            input.all { it.isDigit() } -> digit(input)
-        }
-    }
-
-    private fun digit(digit: String) {
-
-        if (waitingForOperand || current == "0") {
-            current = digit
+        if (waitingForOperand || justCalculated) {
+            currentInput = value
             waitingForOperand = false
+            justCalculated = false
         } else {
-            if (current.length < 18) {
-                current += digit
+
+            if (currentInput == "0") {
+                currentInput = value
+            } else if (currentInput.length < 30) {
+                currentInput += value
             }
         }
 
@@ -361,11 +578,12 @@ class MainActivity : Activity() {
 
     private fun decimal() {
 
-        if (waitingForOperand) {
-            current = "0."
+        if (waitingForOperand || justCalculated) {
+            currentInput = "0."
             waitingForOperand = false
-        } else if (!current.contains(".")) {
-            current += "."
+            justCalculated = false
+        } else if (!currentInput.contains(".")) {
+            currentInput += "."
         }
 
         updateDisplay()
@@ -373,161 +591,227 @@ class MainActivity : Activity() {
 
     private fun percentage() {
 
-        val value = current.toDoubleOrNull() ?: return
-        current = formatNumber(value / 100.0)
+        val value = currentInput.toDoubleOrNull() ?: return
+
+        currentInput = formatNumber(value / 100.0)
         updateDisplay()
     }
 
     private fun toggleSign() {
 
-        if (current == "0") return
+        if (currentInput == "0") return
 
-        current = if (current.startsWith("-")) {
-            current.substring(1)
-        } else {
-            "-$current"
-        }
+        currentInput =
+            if (currentInput.startsWith("-")) {
+                currentInput.substring(1)
+            } else {
+                "-$currentInput"
+            }
 
         updateDisplay()
     }
 
-    private fun chooseOperator(newOperator: String) {
+    private fun chooseOperator(operator: String) {
 
-        val value = current.toDoubleOrNull() ?: 0.0
+        val input = currentInput.toDoubleOrNull() ?: return
 
-        if (operator != null && !waitingForOperand) {
-            stored = performOperation(
-                stored,
-                value,
-                operator!!
+        if (pendingOperator != null && !waitingForOperand) {
+
+            val result = performOperation(
+                storedValue,
+                input,
+                pendingOperator!!
             )
 
-            current = formatNumber(stored)
+            if (result == null) {
+                Toast.makeText(
+                    this,
+                    "Cannot divide by zero",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+
+            storedValue = result
+            currentInput = formatNumber(result)
+
         } else {
-            stored = value
+            storedValue = input
         }
 
-        operator = newOperator
+        pendingOperator = operator
         waitingForOperand = true
+        justCalculated = false
 
-        expressionText =
-            "${formatNumber(stored)} $newOperator"
+        expressionText.text =
+            "${formatNumber(storedValue)} ${displayOperator(operator)}"
 
-        expression.text = expressionText
         updateDisplay()
     }
 
     private fun calculate() {
 
-        val op = operator ?: return
-        val right = current.toDoubleOrNull() ?: 0.0
+        val operator = pendingOperator ?: return
+        val input = currentInput.toDoubleOrNull() ?: return
 
-        val left = stored
+        val result = performOperation(
+            storedValue,
+            input,
+            operator
+        )
 
-        val result = performOperation(left, right, op)
+        if (result == null) {
 
-        val equation =
-            "${formatNumber(left)} $op ${formatNumber(right)} = ${formatNumber(result)}"
+            Toast.makeText(
+                this,
+                "Cannot divide by zero",
+                Toast.LENGTH_SHORT
+            ).show()
 
-        addHistory(equation)
+            return
+        }
 
-        current = formatNumber(result)
-        stored = result
-        operator = null
-        waitingForOperand = true
+        val expression =
+            "${formatNumber(storedValue)} ${displayOperator(operator)} ${formatNumber(input)}"
 
-        expression.text = equation.substringBefore("=")
+        val resultString = formatNumber(result)
+
+        addHistory(
+            "$expression = $resultString"
+        )
+
+        currentInput = resultString
+        storedValue = result
+
+        pendingOperator = null
+        waitingForOperand = false
+        justCalculated = true
+
+        expressionText.text = expression
 
         updateDisplay()
+        animateResult()
     }
 
     private fun performOperation(
-        left: Double,
-        right: Double,
-        op: String
-    ): Double {
+        first: Double,
+        second: Double,
+        operator: String
+    ): Double? {
 
-        return when (op) {
-            "+" -> left + right
-            "−" -> left - right
-            "×" -> left * right
-            "÷" -> if (right == 0.0) Double.NaN else left / right
-            else -> right
+        return when (operator) {
+
+            "+" -> first + second
+
+            "-" -> first - second
+
+            "*" -> first * second
+
+            "/" -> {
+                if (second == 0.0) null
+                else first / second
+            }
+
+            else -> second
         }
     }
 
     private fun squareRoot() {
 
-        val value = current.toDoubleOrNull() ?: return
+        val value = currentInput.toDoubleOrNull() ?: return
 
         if (value < 0) {
-            current = "Error"
-        } else {
-            val result = sqrt(value)
-            addHistory("√${formatNumber(value)} = ${formatNumber(result)}")
-            current = formatNumber(result)
+            Toast.makeText(
+                this,
+                "Invalid number",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
         }
 
-        waitingForOperand = true
+        val result = sqrt(value)
+
+        addHistory(
+            "√${formatNumber(value)} = ${formatNumber(result)}"
+        )
+
+        currentInput = formatNumber(result)
+        expressionText.text = "√${formatNumber(value)}"
+
         updateDisplay()
+        animateResult()
     }
 
     private fun square() {
 
-        val value = current.toDoubleOrNull() ?: return
-
-        val result = value.pow(2)
+        val value = currentInput.toDoubleOrNull() ?: return
+        val result = value * value
 
         addHistory(
             "${formatNumber(value)}² = ${formatNumber(result)}"
         )
 
-        current = formatNumber(result)
-        waitingForOperand = true
+        currentInput = formatNumber(result)
+        expressionText.text = "${formatNumber(value)}²"
 
         updateDisplay()
+        animateResult()
     }
 
     private fun reciprocal() {
 
-        val value = current.toDoubleOrNull() ?: return
+        val value = currentInput.toDoubleOrNull() ?: return
 
         if (value == 0.0) {
-            current = "Error"
-        } else {
-            val result = 1.0 / value
-
-            addHistory(
-                "1/${formatNumber(value)} = ${formatNumber(result)}"
-            )
-
-            current = formatNumber(result)
+            Toast.makeText(
+                this,
+                "Cannot divide by zero",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
         }
 
-        waitingForOperand = true
+        val result = 1.0 / value
+
+        addHistory(
+            "1/${formatNumber(value)} = ${formatNumber(result)}"
+        )
+
+        currentInput = formatNumber(result)
+        expressionText.text = "1/${formatNumber(value)}"
+
         updateDisplay()
+        animateResult()
     }
 
     private fun clearAll() {
 
-        current = "0"
-        stored = 0.0
-        operator = null
+        currentInput = "0"
+        storedValue = 0.0
+        pendingOperator = null
         waitingForOperand = false
-        expressionText = ""
+        justCalculated = false
 
-        expression.text = ""
+        expressionText.text = ""
+
         updateDisplay()
     }
 
     private fun backspace() {
 
-        if (waitingForOperand) return
+        if (waitingForOperand || justCalculated) return
 
-        current = when {
-            current.length <= 1 -> "0"
-            current.startsWith("-") && current.length == 2 -> "0"
-            else -> current.dropLast(1)
+        if (currentInput.length <= 1 ||
+            (currentInput.length == 2 &&
+                    currentInput.startsWith("-"))
+        ) {
+
+            currentInput = "0"
+
+        } else {
+
+            currentInput =
+                currentInput.dropLast(1)
         }
 
         updateDisplay()
@@ -535,14 +819,14 @@ class MainActivity : Activity() {
 
     private fun updateDisplay() {
 
-        display.text = current
+        resultText.text = currentInput
 
-        display.animate()
+        resultText.animate()
             .scaleX(1.02f)
             .scaleY(1.02f)
             .setDuration(70)
             .withEndAction {
-                display.animate()
+                resultText.animate()
                     .scaleX(1f)
                     .scaleY(1f)
                     .setDuration(70)
@@ -553,10 +837,10 @@ class MainActivity : Activity() {
 
     private fun addHistory(item: String) {
 
-        history.addFirst(item)
+        history.add(0, item)
 
-        while (history.size > 20) {
-            history.removeLast()
+        if (history.size > 30) {
+            history.removeAt(history.lastIndex)
         }
 
         refreshHistory()
@@ -566,30 +850,54 @@ class MainActivity : Activity() {
 
         historyContainer.removeAllViews()
 
-        history.forEach { item ->
+        if (history.isEmpty()) {
+
+            val empty = TextView(this).apply {
+                text = "No calculations yet"
+                textSize = 15f
+                setTextColor(secondaryText)
+                gravity = Gravity.CENTER
+                setPadding(
+                    dp(20),
+                    dp(30),
+                    dp(20),
+                    dp(30)
+                )
+            }
+
+            historyContainer.addView(empty)
+
+            return
+        }
+
+        for (item in history) {
 
             val row = TextView(this).apply {
                 text = item
-                textSize = 14f
-                setTextColor(Color.rgb(210, 210, 220))
-                setPadding(
-                    dp(8),
-                    dp(7),
-                    dp(8),
-                    dp(7)
-                )
+                textSize = 15f
+                setTextColor(white)
                 gravity = Gravity.CENTER_VERTICAL
-            }
+                setPadding(
+                    dp(15),
+                    dp(12),
+                    dp(15),
+                    dp(12)
+                )
 
-            row.setOnClickListener {
+                background = roundedBackground(
+                    Color.rgb(27, 30, 48),
+                    dp(14).toFloat()
+                )
 
-                val result = item.substringAfterLast("=")
-                    .trim()
+                setOnClickListener {
 
-                if (result.toDoubleOrNull() != null) {
-                    current = result
-                    waitingForOperand = true
+                    val result = item.substringAfterLast("=")
+                        .trim()
+
+                    currentInput = result
                     updateDisplay()
+
+                    toggleHistory()
                 }
             }
 
@@ -597,20 +905,43 @@ class MainActivity : Activity() {
                 row,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(36)
-                )
+                    dp(52)
+                ).apply {
+                    setMargins(
+                        0,
+                        dp(4),
+                        0,
+                        dp(4)
+                    )
+                }
             )
         }
     }
 
     private fun toggleHistory() {
 
-        historyContainer.visibility =
-            if (historyContainer.visibility == View.VISIBLE) {
-                View.GONE
-            } else {
-                View.VISIBLE
-            }
+        if (historyScroll.visibility == View.VISIBLE) {
+
+            historyScroll.animate()
+                .alpha(0f)
+                .setDuration(180)
+                .withEndAction {
+                    historyScroll.visibility = View.GONE
+                }
+                .start()
+
+        } else {
+
+            refreshHistory()
+
+            historyScroll.visibility = View.VISIBLE
+            historyScroll.alpha = 0f
+
+            historyScroll.animate()
+                .alpha(1f)
+                .setDuration(220)
+                .start()
+        }
     }
 
     private fun copyResult() {
@@ -622,32 +953,48 @@ class MainActivity : Activity() {
         clipboard.setPrimaryClip(
             ClipData.newPlainText(
                 "Calculator result",
-                current
+                currentInput
             )
         )
+
+        Toast.makeText(
+            this,
+            "Result copied: $currentInput",
+            Toast.LENGTH_SHORT
+        ).show()
+
+        vibrate()
     }
 
-    private fun formatNumber(value: Double): String {
+    private fun animateButton(view: View) {
 
-        if (value.isNaN() || value.isInfinite()) {
-            return "Error"
+        val scaleDownX =
+            ObjectAnimator.ofFloat(view, "scaleX", 1f, 0.92f, 1f)
+
+        val scaleDownY =
+            ObjectAnimator.ofFloat(view, "scaleY", 1f, 0.92f, 1f)
+
+        AnimatorSet().apply {
+            playTogether(scaleDownX, scaleDownY)
+            duration = 130
+            start()
         }
+    }
 
-        if (value == 0.0) return "0"
+    private fun animateResult() {
 
-        return if (value % 1.0 == 0.0) {
-            String.format(
-                Locale.US,
-                "%.0f",
-                value
-            )
-        } else {
-            String.format(
-                Locale.US,
-                "%.10f",
-                value
-            ).trimEnd('0').trimEnd('.')
-        }
+        resultText.animate()
+            .scaleX(1.08f)
+            .scaleY(1.08f)
+            .setDuration(120)
+            .withEndAction {
+                resultText.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(180)
+                    .start()
+            }
+            .start()
     }
 
     private fun vibrate() {
@@ -655,29 +1002,94 @@ class MainActivity : Activity() {
         val vibrator =
             getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+
             vibrator.vibrate(
                 VibrationEffect.createOneShot(
                     18,
                     VibrationEffect.DEFAULT_AMPLITUDE
                 )
             )
+
         } else {
             @Suppress("DEPRECATION")
             vibrator.vibrate(18)
         }
     }
 
+    private fun displayOperator(operator: String): String {
+
+        return when (operator) {
+            "*" -> "×"
+            "/" -> "÷"
+            else -> operator
+        }
+    }
+
+    private fun formatNumber(value: Double): String {
+
+        if (!value.isFinite()) {
+            return "Error"
+        }
+
+        if (value == 0.0) {
+            return "0"
+        }
+
+        val rounded = kotlin.math.round(value * 1_000_000_000.0) /
+                1_000_000_000.0
+
+        return if (rounded % 1.0 == 0.0) {
+            rounded.toLong().toString()
+        } else {
+            rounded.toString()
+        }
+    }
+
+    private fun pressedColor(color: Int): Int {
+
+        return when (color) {
+
+            operatorColor -> operatorPressed
+
+            functionColor -> functionPressed
+
+            specialColor -> specialPressed
+
+            equalsColor -> equalsPressed
+
+            numberColor -> numberPressed
+
+            else -> Color.rgb(
+                minOf(Color.red(color) + 25, 255),
+                minOf(Color.green(color) + 25, 255),
+                minOf(Color.blue(color) + 25, 255)
+            )
+        }
+    }
+
+    private fun roundedBackground(
+        color: Int,
+        radius: Float
+    ): android.graphics.drawable.GradientDrawable {
+
+        return android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radius
+        }
+    }
+
     private fun dp(value: Int): Int {
 
-        return (value * resources.displayMetrics.density)
-            .toInt()
+        return (
+            value * resources.displayMetrics.density
+            ).toInt()
     }
 
     override fun onBackPressed() {
 
-        if (historyContainer.visibility == View.VISIBLE) {
-            historyContainer.visibility = View.GONE
+        if (historyScroll.visibility == View.VISIBLE) {
+            toggleHistory()
         } else {
             super.onBackPressed()
         }
