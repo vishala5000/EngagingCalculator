@@ -1,10 +1,7 @@
 name: Build Android APK
 
-"on":
+on:
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   build:
@@ -14,46 +11,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Show Android SDK
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          sdkmanager --version
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Install required Android SDK
-        run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Check project
-        run: |
-          echo "Checking project files..."
-
-          test -f settings.gradle.kts
-          test -f build.gradle.kts
-          test -f app/build.gradle.kts
-          test -f gradlew
-
-          echo "Project files OK"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Make Gradle executable
         run: chmod +x gradlew
 
-      - name: Create signing directory
-        run: mkdir -p signing
-
-      - name: Generate release signing key
+      - name: Create automatic signing keystore
         run: |
+          mkdir -p signing
+
           keytool -genkeypair \
             -v \
             -keystore signing/release.keystore \
-            -alias calculator \
+            -alias engagingcalculator \
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
@@ -65,49 +45,41 @@ jobs:
         run: |
           echo "KEYSTORE_FILE=$GITHUB_WORKSPACE/signing/release.keystore" >> "$GITHUB_ENV"
           echo "KEYSTORE_PASSWORD=calculator123" >> "$GITHUB_ENV"
-          echo "KEY_ALIAS=calculator" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=engagingcalculator" >> "$GITHUB_ENV"
           echo "KEY_PASSWORD=calculator123" >> "$GITHUB_ENV"
 
-      - name: Clean project
+      - name: Build signed Release APK
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK exists
         run: |
-          ./gradlew clean --no-daemon
-
-      - name: Build release APK
-        run: |
-          ./gradlew assembleRelease \
-            --no-daemon \
-            --stacktrace
-
-      - name: Verify APK
-        run: |
-          APK="app/build/outputs/apk/release/app-release.apk"
-
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: APK was not generated."
-            exit 1
-          fi
-
-          echo "APK successfully created:"
-          ls -lh "$APK"
+          test -f app/build/outputs/apk/release/app-release.apk
+          echo "APK created successfully."
 
       - name: Verify APK signature
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
-            verify \
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+
+          if [ -z "$APKSIGNER" ]; then
+            echo "ERROR: apksigner was not found."
+            exit 1
+          fi
+
+          echo "Using: $APKSIGNER"
+
+          "$APKSIGNER" verify \
             --verbose \
             app/build/outputs/apk/release/app-release.apk
 
-      - name: Create final APK
+      - name: Rename APK
         run: |
           cp \
             app/build/outputs/apk/release/app-release.apk \
             EngagingCalculator-v1.0.apk
 
-          ls -lh EngagingCalculator-v1.0.apk
-
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: EngagingCalculator-v1.0
+          name: EngagingCalculator-release
           path: EngagingCalculator-v1.0.apk
           if-no-files-found: error
