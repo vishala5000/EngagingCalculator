@@ -1,4 +1,3 @@
-```kotlin
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -20,12 +19,15 @@ android {
     signingConfigs {
         create("release") {
             val keystorePath = System.getenv("KEYSTORE_FILE")
+            val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+            val keyAliasValue = System.getenv("KEY_ALIAS")
+            val keyPasswordValue = System.getenv("KEY_PASSWORD")
 
-            if (!keystorePath.isNullOrEmpty()) {
+            if (!keystorePath.isNullOrBlank()) {
                 storeFile = file(keystorePath)
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEY_PASSWORD")
+                storePassword = keystorePassword
+                keyAlias = keyAliasValue
+                keyPassword = keyPasswordValue
             }
         }
     }
@@ -59,4 +61,3 @@ android {
         }
     }
 }
-```
